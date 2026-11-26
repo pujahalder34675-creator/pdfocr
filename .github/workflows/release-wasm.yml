@@ -1,0 +1,150 @@
+# Modified for pujahalder34675-creator/pdfocr standalone CI.
+name: Release - WASM
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 2.1.0)"
+        required: true
+        type: string
+      beta:
+        description: "Publish as beta (npm tag: beta instead of latest)"
+        type: boolean
+        default: false
+      dry-run:
+        description: "Dry run (build but do not publish)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    if: github.repository == 'run-llama/liteparse' || inputs.dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate version
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/wasm/package.json').version")
+          if [ "$PKG_VERSION" != "${INPUTS_VERSION}" ]; then
+            echo "::error::Version mismatch: package.json has $PKG_VERSION, expected ${INPUTS_VERSION}"
+            exit 1
+          fi
+          echo "Version validated: ${INPUTS_VERSION}"
+        env:
+          INPUTS_VERSION: ${{ inputs.version }}
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    name: Build WASM
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          # Release builds run cold: a cache another workflow wrote could poison what ships (zizmor cache-poisoning).
+          package-manager-cache: false
+
+      - uses: dtolnay/rust-toolchain@1961bfc0c4a8bf07e0a0c98e1e2459c642ea70a0 # 1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/pdfium-rs
+            target
+          key: ${{ runner.os }}-cargo-wasm-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Build WASM package
+        working-directory: packages/wasm
+        run: npm run build
+
+      - name: Verify output
+        run: |
+          test -f packages/wasm/pkg/liteparse_wasm_bg.wasm
+          test -f packages/wasm/pkg/liteparse_wasm.js
+          test -f packages/wasm/pkg/liteparse_wasm.d.ts
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wasm-pkg
+          path: packages/wasm/pkg/
+          if-no-files-found: error
+
+  publish:
+    permissions:
+      contents: write
+      id-token: write
+    needs: build
+    runs-on: ubuntu-latest
+    name: Publish to npm
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          # Release builds run cold: a cache another workflow wrote could poison what ships (zizmor cache-poisoning).
+          package-manager-cache: false
+
+      # npm trusted publishing (OIDC) requires npm >= 11.5.1
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Download WASM artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-pkg
+          path: packages/wasm/pkg
+
+      - name: Publish
+        if: ${{ !inputs.dry-run }}
+        working-directory: packages/wasm
+        env:
+          NPM_TAG: ${{ inputs.beta && 'beta' || 'latest' }}
+        run: npm publish --access public --provenance --tag "$NPM_TAG" --ignore-scripts
+
+      - name: Create git tag
+        if: ${{ !inputs.dry-run }}
+        run: |
+          git tag "wasm-v${INPUTS_VERSION}"
+          git push origin "wasm-v${INPUTS_VERSION}"
+        env:
+          INPUTS_VERSION: ${{ inputs.version }}
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry-run }}
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          tag_name: wasm-v${{ inputs.version }}
+          name: "WASM v${{ inputs.version }}"
+          generate_release_notes: true
+
+      - name: Summary (dry run)
+        if: ${{ inputs.dry-run }}
+        run: |
+          echo "## Dry Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Would release wasm-v${INPUTS_VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "### Package: @llamaindex/liteparse-wasm" >> $GITHUB_STEP_SUMMARY
+          WASM_SIZE=$(stat --format=%s packages/wasm/pkg/liteparse_wasm_bg.wasm)
+          echo "WASM binary size: $(numfmt --to=iec $WASM_SIZE)" >> $GITHUB_STEP_SUMMARY
+        env:
+          INPUTS_VERSION: ${{ inputs.version }}

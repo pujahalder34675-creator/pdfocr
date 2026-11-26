@@ -1,0 +1,296 @@
+---
+title: OCR Configuration
+description: Configure OCR in LiteParse — built-in Tesseract, LiteParse's own ocria-nano models, or bring your own via HTTP servers.
+sidebar:
+  order: 5
+---
+
+LiteParse uses OCR selectively — only on embedded images or pages where native text extraction didn't find text. This keeps parsing fast while still capturing text from scanned pages and embedded images.
+
+## Built-in Tesseract (default)
+
+Tesseract is bundled with LiteParse and works out of the box. Just run:
+
+```bash
+lit parse document.pdf
+```
+
+### Language support
+
+Specify the OCR language for better accuracy on non-English documents:
+
+```bash
+lit parse document.pdf --ocr-language fra    # French
+lit parse document.pdf --ocr-language deu    # German
+lit parse document.pdf --ocr-language jpn    # Japanese
+```
+
+Tesseract uses [ISO 639-3](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html) language codes (`eng`, `fra`, `deu`, etc.).
+
+### Offline / air-gapped environments
+
+For environments without internet access, point Tesseract at a local directory containing pre-downloaded `.traineddata` files:
+
+```bash
+# Via environment variable
+export TESSDATA_PREFIX=/path/to/tessdata
+lit parse document.pdf --ocr-language eng
+
+# Or via CLI flag
+lit parse document.pdf --tessdata-path /path/to/tessdata
+```
+
+The `tessdata_path` / `tessdataPath` option is also available in the library APIs.
+
+### Troubleshooting: missing language data
+
+If Tesseract can't find its language data, you'll see an error like:
+
+```
+Error opening data file tessdata/eng.traineddata
+Please make sure the TESSDATA_PREFIX environment variable is set to your "tessdata" directory.
+Failed loading language 'eng'
+```
+
+The bundled Tesseract still needs the `.traineddata` file for your language. It is normally downloaded and cached automatically on first use (under `~/.tesseract-rs/tessdata` on Linux, `~/Library/Application Support/tesseract-rs/tessdata` on macOS); if that download didn't happen — e.g. offline, restricted network, or a sandboxed install — OCR cannot run.
+
+To resolve it, do any one of the following:
+
+- Download the language file (e.g. [`eng.traineddata`](https://github.com/tesseract-ocr/tessdata)) and point LiteParse at it with `TESSDATA_PREFIX` or `--tessdata-path` (see [above](#offline--air-gapped-environments)).
+- Use an [HTTP OCR server](#http-ocr-servers) instead of the built-in engine.
+- Disable OCR with `--no-ocr` if you don't need it.
+
+When language data is missing for **every** page, LiteParse now fails with a clear `OCR failed for all N page(s)` error instead of returning a document with silently-empty OCR text — so an unresolved setup surfaces immediately rather than producing partial results that look complete.
+
+### Disabling OCR
+
+If you don't need OCR (pure native-text PDFs, or you don't care about images), disable it for faster parsing:
+
+```bash
+lit parse document.pdf --no-ocr
+```
+
+## ocria-nano (LiteParse's own models)
+
+ocria-nano is LiteParse's own OCR and table model package, built to run fast on CPU. It consists of a text-line detector, a script
+router, four recognizers (Latin, CJK, right-to-left, and a world-script model) and LayoutNet, a learned table and
+layout model, 8.1M parameters in total. It runs in-process through ONNX Runtime, which is downloaded with the models.
+On ParseBench-2 it raises LiteParse from 48.7 (Tesseract) to 59.2, while parsing over twice as many pages per second.
+
+The weights are not bundled with LiteParse and come under their own modified OpenRAIL license licence.
+
+```bash
+lit models pull ocria-nano                  # once: models + ONNX Runtime (60-75 MB), sha256-checked
+lit parse scan.pdf                          # ocria-nano is now the OCR backend
+lit parse scan.pdf --ocr-backend tesseract  # Tesseract for one run
+lit models list                             # installed packages
+lit models rm ocria-nano                    # remove
+```
+
+Behaviour once installed:
+
+- ocria-nano becomes the default OCR backend, and pages render at 250 dpi (Tesseract: 150). `--dpi` overrides it.
+- LayoutNet runs whenever ocria-nano is the backend (also with `--no-ocr`), finding tables and layout blocks.
+- `--ocr-language` is ignored: ocria-nano detects each line's script and picks the recognizer itself.
+
+Offline installs: `lit models pull ocria-nano --from <dir>` installs from a directory holding the package files.
+`LITEPARSE_MODEL_DIR` moves the model directory (default `~/.cache/liteparse/models`), and `ORT_DYLIB_PATH` points at
+an existing ONNX Runtime library.
+
+The same models are available from the libraries:
+
+```python
+from liteparse import LiteParse, models
+
+models.pull("ocria-nano")
+result = LiteParse(ocr_backend="ocria-nano").parse("scan.pdf")
+```
+
+```typescript
+import { LiteParse, models } from "@llamaindex/liteparse";
+
+models.pull("ocria-nano");
+const result = await new LiteParse({ ocrBackend: "ocria-nano" }).parse("scan.pdf");
+```
+
+In the browser and on edge runtimes, the WASM package supports ocria-nano too; see [Browser usage](../browser-usage/).
+
+## HTTP OCR servers
+
+For higher accuracy or GPU-accelerated OCR, you can point LiteParse at an HTTP OCR server. LiteParse ships with ready-to-use examples for popular OCR engines.
+
+### EasyOCR
+
+```bash
+# Start the EasyOCR server (requires Python)
+git clone https://github.com/run-llama/liteparse.git
+cd liteparse/ocr/easyocr
+pip install -r requirements.txt
+python server.py
+
+# Parse with EasyOCR in another terminal
+lit parse document.pdf --ocr-server-url http://localhost:8828/ocr
+```
+
+### PaddleOCR
+
+```bash
+# Start the PaddleOCR server (requires Python)
+git clone https://github.com/run-llama/liteparse.git
+cd liteparse/ocr/paddleocr
+pip install -r requirements.txt
+python server.py
+
+# Parse with PaddleOCR in another terminal
+lit parse document.pdf --ocr-server-url http://localhost:8828/ocr
+```
+
+### Authenticated servers
+
+Pass extra HTTP headers on every OCR request with `--ocr-server-header`, repeating the flag for each header:
+
+```bash
+lit parse document.pdf \
+  --ocr-server-url https://ocr.internal/ocr \
+  --ocr-server-header "Authorization: Bearer $TOKEN" \
+  --ocr-server-header "X-Tenant: acme"
+```
+
+In the libraries this is `ocr_server_headers` / `ocrServerHeaders`, taking a map of header name to value. It has no effect unless an OCR server URL is set.
+
+### Request fields
+
+Each OCR request sends the page image as `file` and the language as `language`. Add any other form field your server understands with `ocr_request_fields` / `ocrRequestFields`, a map of field name to value sent as-is on every request. `ocr_page_request_fields` / `ocrPageRequestFields` maps a 1-based page number to more fields, merged over the base map for that page only. LiteParse adds no field of its own, and a `language` entry replaces the default. Neither option has a CLI flag.
+
+```typescript
+const parser = new LiteParse({
+  ocrServerUrl: "https://ocr.internal/ocr",
+  // Ask for measured word boxes and line angles on every page.
+  ocrRequestFields: {
+    correct_rotation: "true",
+    return_word_boxes: "true",
+    dense_ocr_detection: "true",
+    return_bbox_angles: "true",
+  },
+  // Page 3 is already upright: read it as sent.
+  ocrPageRequestFields: { 3: { correct_rotation: "false" } },
+});
+```
+
+When the response carries measured words, they become `TextItem.words` when word boxes are on (`emit_word_boxes`) and their count matches the words of the line's text. Otherwise, and for a line with no measured words, the line keeps one box, so output without the word-box fields is unchanged. A line's rotation comes from the server's angle when the response has one, and otherwise from the order of its quad's points.
+
+### Parallel OCR workers
+
+LiteParse OCRs multiple pages in parallel. By default, it uses one fewer worker than your CPU core count. Override this with:
+
+```bash
+lit parse document.pdf --num-workers 8
+```
+
+This is useful if you need to slow down OCR requests to an external server or if your OCR engine is GPU-accelerated and can handle more concurrency.
+
+## Custom OCR servers
+
+You can integrate any OCR engine by implementing the LiteParse OCR API. Your server needs a single endpoint:
+
+```
+POST /ocr
+Content-Type: multipart/form-data
+```
+
+**Request fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | binary | Yes | Image file (PNG, JPG, etc.) |
+| `language` | string | No | ISO 639-1 language code (default: `en`) |
+
+> **Watch the language code.** LiteParse forwards whatever `--ocr-language` is set to, which defaults to the Tesseract-style ISO 639-3 code `eng` — not `en`. Your server should accept both. The bundled EasyOCR and PaddleOCR servers do this by mapping `eng` → `en` before dispatch; do the same in a custom server, or pass `--ocr-language en` explicitly.
+
+**Response format:**
+
+```json
+{
+  "results": [
+    {
+      "text": "recognized text",
+      "bbox": [12, 40, 220, 62],
+      "confidence": 0.95
+    }
+  ]
+}
+```
+
+Each result contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `text` | string | Recognized text |
+| `bbox` | `[x1, y1, x2, y2]` | Bounding box in pixels. Origin is top-left, x goes right, y goes down |
+| `confidence` | number | Score from 0.0 to 1.0 |
+
+### Testing your server
+
+```bash
+# Quick test with curl
+curl -X POST http://localhost:8828/ocr \
+  -F "file=@test.png" \
+  -F "language=en" | jq .
+
+# Use with LiteParse
+lit parse document.pdf --ocr-server-url http://localhost:8828/ocr
+```
+
+### Common Gotchas
+
+- Return `{"results": []}` if no text is detected
+- Bounding boxes must be axis-aligned (`[x1, y1, x2, y2]` where top-left to bottom-right)
+- If your engine returns rotated boxes, convert to axis-aligned by taking min/max coordinates
+- If your engine doesn't provide confidence scores, return `1.0`
+- Results should be in reading order (top-to-bottom, left-to-right)
+- Cache OCR models in memory rather than reloading per request
+
+## OCR in the browser (WASM)
+
+The built-in Tesseract and HTTP OCR backends are not available in the WASM build. Instead, you can pass a custom `ocrEngine` object with a `recognize` method. See the [browser usage guide](/liteparse/guides/browser-usage/) for details.
+
+### A note on OCR approaches
+
+These days, its common to apply the term "OCR" to both traditional approaches and newer LLM-based document understanding models.
+
+The LiteParse OCR API is designed specifically for approaches that return text with bounding boxes.
+
+If you are trying to integrate a method that doesn't return bounding boxes, you will have to generate dummy bounding boxes.
+
+## Reusing page images in Rust
+
+Supply existing full-page images to skip rendering them for OCR. Native PDF
+text extraction still runs. This option is available only in Rust.
+
+```rust
+use std::collections::HashMap;
+use liteparse::{LiteParse, LiteParseConfig};
+
+let parser = LiteParse::new(LiteParseConfig {
+    ocr_enabled: true,
+    ocr_page_images: HashMap::from([
+        (1, "/path/to/page-1.png".into()),
+        (3, "/path/to/page-3.jpg".into()),
+    ]),
+    ..Default::default()
+});
+```
+
+- Keys are **1-based source page numbers**, including selected-page and batch
+  parses. DPI is inferred from image dimensions and PDF page size.
+- Images must match the PDF's full page, content and orientation after `/Rotate`
+  and `page_orientation_corrections`. Cropped, stretched or deskewed images are
+  unsupported. Keep files available until parsing finishes.
+- Missing entries render normally. Supplying an image does not force OCR.
+  Invalid images are page errors; `continue_on_page_error` applies.
+- Supplied images keep their dimensions; render DPI and `max_long_edge` affect
+  only newly rendered pages. Requested screenshots are generated separately.
+
+For staged pipelines, set `OcrRenderOptions::page_images`. Access raster data
+through `OcrRaster::image`, using `dimensions()` or `pixels(grayscale)`.
+Existing OCR engine implementations need no changes.

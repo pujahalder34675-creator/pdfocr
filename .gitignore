@@ -1,0 +1,81 @@
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+
+# Build output
+dist/
+dist-browser-compat/
+bin/
+sea-prep.blob
+sea-config.json
+
+# Environment
+*claude*
+.env
+.env.local
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test output
+screenshots/
+*.pdf
+!tests/fixtures/*.pdf
+
+# Temporary files
+tmp/
+temp/
+*.txt
+*.png
+!integration_tests_data/receipt.png
+!integration_tests_data/sample3.docx.doc
+!integration_tests_data/sample.pdf
+!integration_tests_data/filled_acroform.pdf
+deno.json
+
+# Python files
+*venv*
+__pycache__
+*.pyc
+*cache*
+
+# Test/dev directories (local testing)
+e2e-output/
+parsed_dataset/
+hard_docs/
+hard_docs_parsed/
+test-docs/
+test-docs-output/
+arxiv_screenshots/
+more_hard_docs/
+nytimes_imgs/
+ac/
+ltt/
+
+# OCR data files
+*.traineddata
+
+# Docs
+.docs-preview/
+docs/src/content/docs/liteparse/api.md
+docs/src/content/docs/liteparse/.api-tmp/
+
+# Rust
+packages/rust/target/
+packages/rust/vendor/
+target/

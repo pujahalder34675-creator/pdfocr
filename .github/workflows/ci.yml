@@ -1,0 +1,193 @@
+# Modified for pujahalder34675-creator/pdfocr standalone CI.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+
+# A new push to a pull request cancels that PR's older run of this workflow. Pushes to
+# main and merge-queue runs get a group of their own (run_id), so they never queue
+# behind or cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtesseract-dev libleptonica-dev
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/pdfium-rs
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+      # tesseract-rs's build script compiles leptonica + tesseract from C/C++ source outside
+      # target/, so the cargo cache never covered it. Shared with build-and-test (ubuntu-latest)
+      # and e2e-output.yml: same image, same build.
+      - name: Read tesseract-rs version
+        id: tesseract-rs
+        shell: bash
+        run: |
+          v=$(grep -A1 '^name = "tesseract-rs"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Cache tesseract-rs build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.tesseract-rs
+          key: tesseract-rs-ubuntu-latest-host-${{ steps.tesseract-rs.outputs.version }}
+      - run: rustup toolchain install stable --profile minimal --component clippy
+      - run: cargo clippy --all-targets
+
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-26-intel, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtesseract-dev libleptonica-dev libreoffice-writer
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tesseract leptonica
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/pdfium-rs
+            ~/Library/Caches/pdfium-rs
+            ${{ runner.os == 'Windows' && format('{0}\pdfium-rs', env.LOCALAPPDATA) || '' }}
+            target
+          key: ${{ matrix.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      # tesseract-rs's build script compiles leptonica + tesseract from C/C++ source and keeps
+      # the result outside target/, so the cargo cache above never covers it and every job
+      # recompiled it (3-9 min on macos-26-intel, even on a cargo cache hit). Keyed on the
+      # tesseract-rs version alone, so ordinary Cargo.lock changes still hit.
+      - name: Read tesseract-rs version
+        id: tesseract-rs
+        shell: bash
+        run: |
+          v=$(grep -A1 '^name = "tesseract-rs"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache tesseract-rs build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/Library/Application Support/tesseract-rs
+            ~/.tesseract-rs
+            ~/AppData/Roaming/tesseract-rs
+          key: tesseract-rs-${{ matrix.os }}-host-${{ steps.tesseract-rs.outputs.version }}
+
+      - name: Force Ninja generator (Windows)
+        if: runner.os == 'Windows'
+        run: echo "CMAKE_GENERATOR=Ninja" >> $GITHUB_ENV
+        shell: bash
+
+      - run: cargo build --workspace --all-targets --exclude liteparse-python --exclude liteparse-napi
+      - name: Test workspace
+        # LibreOffice can paginate the DOC fixture differently across releases.
+        # The Office smoke test below checks the same fixture's content.
+        run: >-
+          cargo test --workspace --exclude liteparse-python --exclude liteparse-napi --
+          --skip test_parse_bytes_office_integration
+          --skip test_parse_office_doc_integration
+          --skip test_batch_session_owns_converted_source_for_its_lifetime
+        env:
+          SKIP_INTEGRATION_TESTS: ${{ runner.os != 'Linux' && 'yes' || '' }}
+
+      - name: Office conversion smoke test
+        if: runner.os == 'Linux'
+        run: |
+          ./target/debug/lit parse integration_tests_data/sample3.doc --no-ocr --format json -q -o office-output.json
+          jq -e '
+            .total_pages >= 2
+            and any(.pages[]; (.text | test("Sample[[:space:]]+Document")) and (.text_items | length > 0))
+          ' office-output.json
+
+      - name: CLI smoke test
+        if: runner.os != 'Windows'
+        run: |
+          ./target/debug/lit --version
+          ./target/debug/lit parse demo/docs/apple-10k-2024.pdf --no-ocr --max-pages 1 -q -o cli-output.txt
+          grep -qF "Apple Inc." cli-output.txt
+
+      - name: OCR smoke test (runtime tessdata download)
+        shell: bash
+        run: |
+          # Move away the tessdata that tesseract-rs/build.rs downloaded during
+          # `cargo build`, so the parse exercises the runtime first-use
+          # download path (the code path that npm/pip prebuilt users hit).
+          # The directory also holds the cached leptonica/tesseract build, so it
+          # is moved aside (not deleted) and put back below for the cache save.
+          dirs=("$HOME/Library/Application Support/tesseract-rs" "$HOME/.tesseract-rs")
+          if [ -n "${APPDATA:-}" ]; then dirs+=("$APPDATA/tesseract-rs"); fi
+          for d in "${dirs[@]}"; do
+            if [ -d "$d" ]; then mv "$d" "$d.ci-saved"; fi
+          done
+
+          LIT=./target/debug/lit
+          [ -f "$LIT.exe" ] && LIT="$LIT.exe"
+          "$LIT" parse demo/docs/long_tiny_text.pdf --max-pages 1 -q -o ocr-out.txt
+
+          # If OCR ran, page 1 has substantial text beyond just the
+          # "--- Page 1 ---" header (~16 bytes). A tessdata-load failure
+          # surfaces as systemic OCR failure and an empty/tiny output.
+          size=$(wc -c < ocr-out.txt)
+          echo "OCR output size: $size bytes"
+          test "$size" -gt 200
+
+          for d in "${dirs[@]}"; do
+            if [ -d "$d.ci-saved" ]; then rm -rf "$d"; mv "$d.ci-saved" "$d"; fi
+          done
+
+  # Test that docker builds
+  build-docker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the base Docker image
+        run: docker build .
+      - name: Build the full Docker image
+        run: docker build . -f full.Dockerfile

@@ -1,0 +1,224 @@
+# Modified for pujahalder34675-creator/pdfocr standalone CI.
+name: E2E Output Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  merge_group:
+    types: [checks_requested]
+
+# For PRs, we need write permissions to add labels
+permissions:
+  contents: read
+  pull-requests: write
+
+# A new push to a pull request cancels that PR's older run of this workflow. Pushes to
+# main and merge-queue runs get a group of their own (run_id), so they never queue
+# behind or cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  compare-outputs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: 2
+    outputs:
+      has_changes: ${{ steps.compare.outputs.has_changes }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtesseract-dev libleptonica-dev \
+            tesseract-ocr libreoffice imagemagick ghostscript
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/pdfium-rs
+            target
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
+
+      # tesseract-rs's build script compiles leptonica + tesseract from C/C++ source outside
+      # target/, so the cargo cache never covered it. Shared with ci.yml (same image, same build).
+      - name: Read tesseract-rs version
+        id: tesseract-rs
+        shell: bash
+        run: |
+          v=$(grep -A1 '^name = "tesseract-rs"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache tesseract-rs build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.tesseract-rs
+          key: tesseract-rs-ubuntu-latest-host-${{ steps.tesseract-rs.outputs.version }}
+
+      - name: Build
+        run: cargo build --release -p liteparse
+
+      - name: Check dataset access
+        id: dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [[ -n "$HF_TOKEN" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python for dataset comparison
+        if: steps.dataset.outputs.enabled == 'true'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Download from HuggingFace
+        if: steps.dataset.outputs.enabled == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pip install huggingface_hub
+          hf download 'llamaindex/liteparse_cicd_data' --local-dir expected-dataset --repo-type dataset
+
+      - name: Compare outputs
+        if: steps.dataset.outputs.enabled == 'true'
+        id: compare
+        run: ./scripts/compare-outputs.sh expected-dataset
+
+      - name: Validate structured output on a bundled fixture
+        if: steps.dataset.outputs.enabled != 'true'
+        run: |
+          ./target/release/lit parse integration_tests_data/sample.pdf --no-ocr --format json -q -o standalone-output.json
+          jq -e '
+            .total_pages == 1
+            and (.pages[0].text | test("Sample[[:space:]]+PDF"))
+            and (.pages[0].text_items | length > 0)
+          ' standalone-output.json
+
+      - name: Upload comparison results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: comparison-results
+          path: |
+            comparison-output.txt
+            standalone-output.json
+
+      - name: Add label for changed outputs (PR only)
+        if: github.repository == 'run-llama/liteparse' && github.event_name == 'pull_request' && steps.compare.outputs.has_changes == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['output-changed']
+            })
+
+      - name: Check for approval label (PR only)
+        id: check-approved
+        if: github.repository == 'run-llama/liteparse' && github.event_name == 'pull_request' && steps.compare.outputs.has_changes == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            const hasApproval = labels.some(label => label.name === 'output-approved');
+            core.setOutput('has_approval', hasApproval.toString());
+            console.log(`Has output-approved label: ${hasApproval}`);
+
+      - name: Require approval for output changes
+        if: github.repository == 'run-llama/liteparse' && steps.compare.outputs.has_changes == 'true' && github.event_name == 'pull_request' && steps.check-approved.outputs.has_approval != 'true'
+        run: |
+          echo "::warning::This PR changes liteparse output. Please review the comparison results."
+          echo ""
+          echo "To approve these changes:"
+          echo "1. Review the comparison output in the artifacts"
+          echo "2. Add the 'output-approved' label to this PR"
+          echo "3. Re-run this workflow"
+          exit 1
+
+  # This job only runs on main branch after merge when outputs changed
+  upload-dataset:
+    runs-on: ubuntu-latest
+    needs: compare-outputs
+    if: github.repository == 'run-llama/liteparse' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.compare-outputs.outputs.has_changes == 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtesseract-dev libleptonica-dev \
+            tesseract-ocr libreoffice imagemagick ghostscript
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/pdfium-rs
+            target
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
+
+      # tesseract-rs's build script compiles leptonica + tesseract from C/C++ source outside
+      # target/, so the cargo cache never covered it. Shared with ci.yml (same image, same build).
+      - name: Read tesseract-rs version
+        id: tesseract-rs
+        shell: bash
+        run: |
+          v=$(grep -A1 '^name = "tesseract-rs"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache tesseract-rs build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.tesseract-rs
+          key: tesseract-rs-ubuntu-latest-host-${{ steps.tesseract-rs.outputs.version }}
+
+      - name: Build
+        run: cargo build --release -p liteparse
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install huggingface_hub
+
+      - name: Download existing dataset from HuggingFace
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          hf download 'llamaindex/liteparse_cicd_data' --local-dir expected-dataset --repo-type dataset
+
+      - name: Generate and upload dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DATASET_REPO: ${{ vars.HF_DATASET_REPO || 'llamaindex/liteparse_cicd_data' }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "Warning: HF_TOKEN not set, skipping upload"
+            exit 0
+          fi
+          ./scripts/upload-dataset.sh expected-dataset "$HF_DATASET_REPO"

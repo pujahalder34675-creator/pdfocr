@@ -1,0 +1,56 @@
+# Modified for pujahalder34675-creator/pdfocr standalone CI.
+name: Sync Docs to Developer Hub
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+  workflow_dispatch:
+
+# The push to the docs repo uses DEVELOPER_HUB_TOKEN, not GITHUB_TOKEN.
+permissions:
+  contents: read
+
+jobs:
+  sync-docs:
+    if: github.repository == 'run-llama/liteparse'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly
+
+      - name: Install rustdoc-md
+        run: cargo install rustdoc-md
+
+      - name: Checkout docs repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: run-llama/developers
+          token: ${{ secrets.DEVELOPER_HUB_TOKEN }}
+          path: developer-hub
+
+      - name: Generate API docs
+        run: ./scripts/generate-api-docs.sh
+
+      - name: Sync docs
+        run: ./scripts/sync-docs-to-developer-hub.sh developer-hub
+
+      - name: Commit and push
+        working-directory: developer-hub
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/content/docs/liteparse
+          if git diff --staged --quiet; then
+            echo "No docs changes to sync."
+            exit 0
+          fi
+          SOURCE_SHA="${GITHUB_SHA::8}"
+          git commit -m "sync: liteparse docs from run-llama/liteparse@${SOURCE_SHA}"
+          git push

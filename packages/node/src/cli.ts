@@ -1,0 +1,683 @@
+#!/usr/bin/env node
+
+import { program } from "commander";
+import { LiteParse, models, type LiteParseConfig } from "./lib.js";
+import { parseResultToCliJson } from "./cli-json.js";
+import { formatText } from "./cli-text.js";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { join, relative, parse as parsePath } from "node:path";
+
+/**
+ * The package version, read from the package.json that ships next to `dist/`
+ * (`dist/cli.js` -> `../package.json`, both in a checkout and when installed),
+ * so `--version` can never drift from the published version.
+ */
+function readPackageVersion(): string {
+  try {
+    const pkg: unknown = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
+    );
+    if (
+      typeof pkg === "object" &&
+      pkg !== null &&
+      "version" in pkg &&
+      typeof pkg.version === "string"
+    ) {
+      return pkg.version;
+    }
+  } catch {
+    // Fall through: an unreadable package.json must not break every command.
+  }
+  return "unknown";
+}
+
+program
+  .name("liteparse")
+  .description("Fast, lightweight PDF and document parsing")
+  .version(readPackageVersion());
+
+/**
+ * Resolve a CLI `<file>` argument into a parser input. `-` means read the
+ * document from stdin (e.g. `curl -sL … | liteparse parse -`); anything else is
+ * passed through as a path. Streaming stdin (rather than `readFileSync(0)`)
+ * avoids EAGAIN on non-blocking pipes.
+ */
+async function resolveInput(file: string): Promise<string | Buffer> {
+  if (file !== "-") return file;
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk as Buffer);
+  }
+  const bytes = Buffer.concat(chunks);
+  if (bytes.length === 0) {
+    throw new Error(
+      "no data on stdin (input `-` expects a document piped in, e.g. `curl … | liteparse parse -`)",
+    );
+  }
+  return bytes;
+}
+
+/** Collect repeated `--ocr-server-header "Name: Value"` flags into an object. */
+function collectHeader(
+  value: string,
+  previous: Record<string, string> = {},
+): Record<string, string> {
+  const idx = value.indexOf(":");
+  if (idx === -1) {
+    throw new Error(`invalid header '${value}', expected 'Name: Value'`);
+  }
+  const name = value.slice(0, idx).trim();
+  if (name === "") {
+    throw new Error(`invalid header '${value}', empty header name`);
+  }
+  previous[name] = value.slice(idx + 1).trim();
+  return previous;
+}
+
+program
+  .command("parse")
+  .description("Parse a document and extract text")
+  .argument("<file>", "Path to the document file")
+  .option("-o, --output <file>", "Output file path")
+  .option("--format <format>", 'Output format: json|text|markdown (default: "text")')
+  .option(
+    "--image-mode <mode>",
+    "How to surface raster images in markdown: off|placeholder|embed (default: placeholder)",
+  )
+  .option(
+    "--image-output-dir <dir>",
+    "Directory to write embedded images to when --image-mode embed is set",
+  )
+  .option("--extract-images", "Extract embedded image bytes and metadata")
+  .option("--no-links", "Disable hyperlink extraction (emit plain anchor text)")
+  .option(
+    "--keep-headers-footers",
+    "Keep running headers/footers in markdown output instead of stripping them",
+  )
+  .option("--table-model <path>", "Learned table-structure model (weights file)")
+  .option(
+    "--keep-clipped-text",
+    "Keep text hidden by clips (e.g. overflow from fixed-height table cells)",
+  )
+  .option("--extract-annotations", "Include all PDF annotations in page output")
+  .option("--extract-form-fields", "Include AcroForm widget fields and values")
+  .option("--extract-structure-tree", "Include the tagged-PDF logical structure tree")
+  .option(
+    "--extract-blocks",
+    "Include each page's classified layout blocks with bounding boxes",
+  )
+  .option(
+    "--extract-xfa-packets",
+    "Include raw XFA packets (name + XML content) in JSON output",
+  )
+  .option(
+    "--extract-content-bounds",
+    "Include each page's content_bounds in JSON output",
+  )
+  .option("--ocr-server-url <url>", "HTTP OCR server URL")
+  .option(
+    "--ocr-backend <backend>",
+    "OCR engine when no --ocr-server-url is given: tesseract or ocria-nano (default: ocria-nano once pulled)",
+  )
+  .option(
+    "--ocr-server-header <header>",
+    'Extra header for OCR server requests, "Name: Value" (repeatable)',
+    collectHeader,
+  )
+  .option("--no-ocr", "Disable OCR")
+  .option("--ocr-language <lang>", "OCR language (default: eng)")
+  .option("--max-pages <n>", "Max pages to parse", parseInt)
+  .option(
+    "--target-pages <pages>",
+    'Pages to parse (e.g., "1-5,10,15-20")',
+  )
+  .option(
+    "--continue-on-page-error",
+    "Continue after page-level extraction errors and report them in JSON",
+  )
+  .option("--dpi <dpi>", "Rendering DPI", parseFloat)
+  .option("--preserve-small-text", "Keep very small text")
+  .option(
+    "--extract-text-metadata",
+    "Include rich PDF text metadata in text items and JSON output",
+  )
+  .option("--password <password>", "Password for encrypted documents")
+  .option("--config <file>", "JSON config file path")
+  .option("-q, --quiet", "Suppress progress output")
+  .option("--num-workers <n>", "Number of concurrent OCR workers", parseInt)
+  .option(
+    "--complexity",
+    "Include per-page complexity signals in JSON output",
+  )
+  .option(
+    "--extract-vector-graphics",
+    "Include page-scoped vector shapes and merged horizontal/vertical lines",
+  )
+  .action(async (file: string, opts: Record<string, unknown>) => {
+    try {
+      const config: Partial<LiteParseConfig> = {};
+
+      // Load config file if provided
+      if (opts.config) {
+        const fileConfig = JSON.parse(
+          readFileSync(opts.config as string, "utf-8"),
+        );
+        Object.assign(config, fileConfig);
+      }
+
+      // CLI options override config file
+      if (opts.format) config.outputFormat = opts.format as "json" | "text" | "markdown";
+      if (opts.imageMode)
+        config.imageMode = opts.imageMode as "off" | "placeholder" | "embed";
+      if (opts.imageOutputDir)
+        config.imageOutputDir = opts.imageOutputDir as string;
+      if (opts.extractImages) config.extractImages = true;
+      if (opts.links === false) config.extractLinks = false;
+      if (opts.keepHeadersFooters) config.keepHeadersFooters = true;
+      if (opts.tableModel) config.tableModel = opts.tableModel as string;
+      if (opts.keepClippedText) config.keepClippedText = true;
+      if (opts.extractAnnotations) config.extractAnnotations = true;
+      if (opts.extractFormFields) config.extractFormFields = true;
+      if (opts.extractStructureTree) config.extractStructureTree = true;
+      if (opts.extractBlocks) config.extractBlocks = true;
+      if (opts.extractXfaPackets) config.extractXfaPackets = true;
+      if (opts.extractContentBounds) config.extractContentBounds = true;
+      if (opts.ocrServerUrl)
+        config.ocrServerUrl = opts.ocrServerUrl as string;
+      if (opts.ocrBackend)
+        config.ocrBackend = opts.ocrBackend as LiteParseConfig["ocrBackend"];
+      if (opts.ocrServerHeader)
+        config.ocrServerHeaders = opts.ocrServerHeader as Record<string, string>;
+      if (opts.ocr === false) config.ocrEnabled = false;
+      if (opts.ocrLanguage) config.ocrLanguage = opts.ocrLanguage as string;
+      if (opts.maxPages) config.maxPages = opts.maxPages as number;
+      if (opts.targetPages) config.targetPages = opts.targetPages as string;
+      if (opts.continueOnPageError) config.continueOnPageError = true;
+      if (opts.dpi) config.dpi = opts.dpi as number;
+      if (opts.preserveSmallText) config.preserveVerySmallText = true;
+      if (opts.extractTextMetadata) config.extractTextMetadata = true;
+      if (opts.password) config.password = opts.password as string;
+      if (opts.quiet) config.quiet = true;
+      if (opts.numWorkers) config.numWorkers = opts.numWorkers as number;
+      if (opts.complexity) config.includeComplexity = true;
+      if (opts.extractVectorGraphics) config.extractVectorGraphics = true;
+
+      // Default CLI output to text (library defaults to json)
+      if (!config.outputFormat) config.outputFormat = "text";
+
+      const parser = new LiteParse(config);
+      const result = await parser.parse(await resolveInput(file));
+
+      // JSON output carries pageErrors itself; text/markdown would silently
+      // omit the failed pages, so always surface them on stderr.
+      for (const error of result.pageErrors) {
+        console.error(
+          `[liteparse] page ${error.pageNum} failed to extract and was skipped: ${error.message}`,
+        );
+      }
+
+      const output =
+        config.outputFormat === "json"
+          ? JSON.stringify(
+              parseResultToCliJson(result, {
+                extractTextMetadata: config.extractTextMetadata,
+              }),
+              null,
+              2,
+            )
+          : config.outputFormat === "text"
+            ? formatText(result.pages)
+            : result.text;
+
+
+      if (opts.output) {
+        writeFileSync(opts.output as string, output, "utf-8");
+      } else {
+        process.stdout.write(output);
+      }
+    } catch (err) {
+      console.error(
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("is-complex")
+  .description(
+    "Check if a document is 'complex' enough to require OCR or other advanced parsing",
+  )
+  .argument("<file>", "Path to the document file")
+  .option("--compact", "Emit dense, whitespace-free JSON instead of pretty")
+  .option("--max-pages <n>", "Max pages to parse", parseInt)
+  .option(
+    "--target-pages <pages>",
+    'Pages to check (e.g., "1-5,10,15-20")',
+  )
+  .option("--password <password>", "Password for encrypted documents")
+  .option("-q, --quiet", "Suppress progress output")
+  .action(async (file: string, opts: Record<string, unknown>) => {
+    try {
+      const config: Partial<LiteParseConfig> = {};
+      if (opts.maxPages) config.maxPages = opts.maxPages as number;
+      if (opts.targetPages) config.targetPages = opts.targetPages as string;
+      if (opts.password) config.password = opts.password as string;
+      if (opts.quiet) config.quiet = true;
+
+      const parser = new LiteParse(config);
+      const stats = await parser.isComplex(await resolveInput(file));
+
+      const complexPages = stats.filter((s) => s.needsOcr).length;
+
+      // Always emit JSON on stdout so the command composes with `jq` without a
+      // flag. Pretty by default; `--compact` drops the whitespace. Both parse
+      // identically for any reader.
+      process.stdout.write(
+        opts.compact
+          ? JSON.stringify(stats)
+          : JSON.stringify(stats, null, 2),
+      );
+      process.stdout.write("\n");
+
+      // Human verdict goes to stderr so it never pollutes the JSON on stdout;
+      // the exit code below carries the same signal for scripts.
+      if (!opts.quiet) {
+        const verdict = complexPages > 0 ? "COMPLEX" : "SIMPLE";
+        const layoutCount = (reason: string) =>
+          stats.filter((s) => s.layout?.reasons.includes(reason)).length;
+        console.error(
+          `${verdict} — ${complexPages}/${stats.length} page(s) need OCR; ` +
+            `layout: ${layoutCount("multi-column")} multi-column, ` +
+            `${layoutCount("table-likely")} table, ` +
+            `${layoutCount("dense-graphics")} graphics-dense`,
+        );
+      }
+
+      // Exit non-zero when any page needs OCR, so the command is usable as a
+      // shell predicate (e.g. `is-complex doc.pdf && parse --no-ocr`).
+      if (complexPages > 0) process.exit(1);
+    } catch (err) {
+      console.error(
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("screenshot")
+  .description("Generate screenshots of document pages")
+  .argument("<file>", "Path to the document file")
+  .option(
+    "-o, --output-dir <dir>",
+    "Output directory for screenshots",
+    "./screenshots",
+  )
+  .option(
+    "--target-pages <pages>",
+    'Pages to screenshot (e.g., "1,3,5" or "1-5")',
+  )
+  .option("--dpi <dpi>", "Rendering DPI", parseFloat)
+  .option("--password <password>", "Password for encrypted documents")
+  .option("-q, --quiet", "Suppress progress output")
+  .action(async (file: string, opts: Record<string, unknown>) => {
+    try {
+      const config: Partial<LiteParseConfig> = {};
+      if (opts.dpi) config.dpi = opts.dpi as number;
+      if (opts.password) config.password = opts.password as string;
+      if (opts.quiet) config.quiet = true;
+      if (opts.targetPages) config.targetPages = opts.targetPages as string;
+
+      const parser = new LiteParse(config);
+
+      // Parse target pages into number array
+      let pageNumbers: number[] | undefined;
+      if (opts.targetPages) {
+        pageNumbers = [];
+        for (const part of (opts.targetPages as string).split(",")) {
+          const trimmed = part.trim();
+          if (trimmed.includes("-")) {
+            const [start, end] = trimmed.split("-").map(Number);
+            for (let i = start; i <= end; i++) pageNumbers.push(i);
+          } else {
+            pageNumbers.push(Number(trimmed));
+          }
+        }
+      }
+
+      const outputDir = opts.outputDir as string;
+      mkdirSync(outputDir, { recursive: true });
+
+      const results = await parser.screenshot(file, pageNumbers);
+
+      for (const result of results) {
+        const outputPath = join(outputDir, `page_${result.pageNum}.png`);
+        writeFileSync(outputPath, result.imageBuffer);
+        if (!opts.quiet) {
+          console.error(
+            `[liteparse] screenshot page ${result.pageNum} → ${outputPath}`,
+          );
+        }
+      }
+    } catch (err) {
+      console.error(
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("batch-parse")
+  .description("Parse multiple documents in batch mode")
+  .argument("<input-dir>", "Input directory")
+  .argument("<output-dir>", "Output directory")
+  .option("--format <format>", 'Output format: json|text|markdown (default: "text")')
+  .option("--no-ocr", "Disable OCR")
+  .option("--ocr-language <lang>", "OCR language (default: eng)")
+  .option("--ocr-server-url <url>", "HTTP OCR server URL")
+  .option(
+    "--ocr-backend <backend>",
+    "OCR engine when no --ocr-server-url is given: tesseract or ocria-nano (default: ocria-nano once pulled)",
+  )
+  .option(
+    "--ocr-server-header <header>",
+    'Extra header for OCR server requests, "Name: Value" (repeatable)',
+    collectHeader,
+  )
+  .option("--max-pages <n>", "Max pages to parse per file", parseInt)
+  .option("--dpi <dpi>", "Rendering DPI", parseFloat)
+  .option("--recursive", "Recursively search input directory")
+  .option("--extension <ext>", "Only process files with this extension")
+  .option("--password <password>", "Password for encrypted documents")
+  .option("-q, --quiet", "Suppress progress output")
+  .option("--num-workers <n>", "Number of concurrent OCR workers", parseInt)
+  .option(
+    "--extract-text-metadata",
+    "Include rich PDF text metadata in text items and JSON output",
+  )
+  .option("--extract-images", "Extract embedded image bytes and metadata")
+  .option("--extract-annotations", "Include all PDF annotations in page output")
+  .option("--extract-form-fields", "Include AcroForm widget fields and values")
+  .option("--extract-structure-tree", "Include the tagged-PDF logical structure tree")
+  .option(
+    "--extract-blocks",
+    "Include each page's classified layout blocks with bounding boxes",
+  )
+  .option(
+    "--extract-xfa-packets",
+    "Include raw XFA packets (name + XML content) in JSON output",
+  )
+  .option(
+    "--extract-content-bounds",
+    "Include each page's content_bounds in JSON output",
+  )
+  .option(
+    "--extract-vector-graphics",
+    "Include page-scoped vector shapes and merged horizontal/vertical lines",
+  )
+  .option("--table-model <path>", "Learned table-structure model (weights file)")
+  .action(
+    async (
+      inputDir: string,
+      outputDir: string,
+      opts: Record<string, unknown>,
+    ) => {
+      try {
+        const config: Partial<LiteParseConfig> = {};
+        const format = (opts.format as string) ?? "text";
+        config.outputFormat = format as "json" | "text" | "markdown";
+        if (opts.ocr === false) config.ocrEnabled = false;
+        if (opts.ocrLanguage) config.ocrLanguage = opts.ocrLanguage as string;
+        if (opts.ocrServerUrl)
+          config.ocrServerUrl = opts.ocrServerUrl as string;
+        if (opts.ocrBackend)
+          config.ocrBackend = opts.ocrBackend as LiteParseConfig["ocrBackend"];
+        if (opts.ocrServerHeader)
+          config.ocrServerHeaders = opts.ocrServerHeader as Record<string, string>;
+        if (opts.maxPages) config.maxPages = opts.maxPages as number;
+        if (opts.dpi) config.dpi = opts.dpi as number;
+        if (opts.password) config.password = opts.password as string;
+        if (opts.quiet) config.quiet = true;
+        if (opts.numWorkers) config.numWorkers = opts.numWorkers as number;
+        if (opts.extractTextMetadata) config.extractTextMetadata = true;
+        if (opts.extractImages) config.extractImages = true;
+        if (opts.extractAnnotations) config.extractAnnotations = true;
+        if (opts.extractFormFields) config.extractFormFields = true;
+        if (opts.extractStructureTree) config.extractStructureTree = true;
+        if (opts.extractBlocks) config.extractBlocks = true;
+        if (opts.extractXfaPackets) config.extractXfaPackets = true;
+        if (opts.extractContentBounds) config.extractContentBounds = true;
+      if (opts.extractContentBounds) config.extractContentBounds = true;
+      if (opts.extractXfaPackets) config.extractXfaPackets = true;
+      if (opts.extractContentBounds) config.extractContentBounds = true;
+        if (opts.extractVectorGraphics) config.extractVectorGraphics = true;
+        if (opts.tableModel) config.tableModel = opts.tableModel as string;
+
+        const parser = new LiteParse(config);
+        const outExt = format === "json" ? ".json" : format === "markdown" ? ".md" : ".txt";
+
+        mkdirSync(outputDir, { recursive: true });
+
+        const extFilter = opts.extension
+          ? (opts.extension as string).startsWith(".")
+            ? (opts.extension as string).toLowerCase()
+            : `.${(opts.extension as string).toLowerCase()}`
+          : undefined;
+
+        const files = collectFiles(
+          inputDir,
+          !!opts.recursive,
+          extFilter,
+        );
+
+        if (files.length === 0) {
+          console.error(
+            `[liteparse] no matching files found in ${inputDir}`,
+          );
+          return;
+        }
+        if (!opts.quiet) {
+          console.error(
+            `[liteparse] found ${files.length} files to process`,
+          );
+        }
+
+        // Outputs are named `<stem><ext>`, so `report.pdf` and `report.png`
+        // would both land on `report.txt` and the later one would silently
+        // overwrite the earlier one. Refuse up front, before parsing or
+        // writing anything.
+        assertNoOutputCollisions(files, inputDir, outputDir, outExt);
+
+        let success = 0;
+        let errors = 0;
+
+        for (const filePath of files) {
+          const t0 = Date.now();
+          const rel = relative(inputDir, filePath);
+          const parsed = parsePath(rel);
+          const outPath = batchOutputPath(filePath, inputDir, outputDir, outExt);
+          mkdirSync(join(outputDir, parsed.dir), { recursive: true });
+
+          try {
+            const result = await parser.parse(filePath);
+            const output =
+              format === "json"
+                ? JSON.stringify(
+                    parseResultToCliJson(result, {
+                      extractTextMetadata: config.extractTextMetadata,
+                    }),
+                    null,
+                    2,
+                  )
+                : format === "text"
+                  ? formatText(result.pages)
+                  : result.text;
+            writeFileSync(outPath, output, "utf-8");
+            success++;
+            if (!opts.quiet) {
+              const elapsed = Date.now() - t0;
+              console.error(
+                `[liteparse] ${filePath} → ${outPath} (${elapsed}ms)`,
+              );
+            }
+          } catch (err) {
+            console.error(
+              `[liteparse] error parsing ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            errors++;
+          }
+        }
+
+        console.error(
+          `[liteparse] batch complete: ${success} succeeded, ${errors} failed`,
+        );
+        if (errors > 0) process.exit(1);
+      } catch (err) {
+        console.error(
+          `Error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        process.exit(1);
+      }
+    },
+  );
+
+// Keep in sync with the extension lists in crates/liteparse/src/conversion.rs.
+// Plain-text formats (.txt, .md, .markdown, .log) are deliberately absent: the
+// parser rejects them ("unsupported file format"), so scanning them would only
+// turn every such file in a directory into a reported failure.
+const SUPPORTED_EXTENSIONS = new Set([
+  ".pdf",
+  ".doc", ".docx", ".docm", ".dot", ".dotm", ".dotx", ".odt", ".ott", ".rtf", ".pages",
+  ".ppt", ".pptx", ".pptm", ".pot", ".potm", ".potx", ".odp", ".otp", ".key",
+  ".xls", ".xlsx", ".xlsm", ".xlsb", ".ods", ".ots", ".csv", ".tsv", ".numbers",
+  ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".svg",
+]);
+
+/** Where `batch-parse` writes the output for `filePath`. */
+function batchOutputPath(
+  filePath: string,
+  inputDir: string,
+  outputDir: string,
+  outExt: string,
+): string {
+  const parsed = parsePath(relative(inputDir, filePath));
+  return join(outputDir, parsed.dir, parsed.name + outExt);
+}
+
+/**
+ * Throw if two inputs would be written to the same output file. Paths are
+ * compared case-insensitively on Windows and macOS, whose default file systems
+ * would make `Report.txt` and `report.txt` the same file.
+ */
+function assertNoOutputCollisions(
+  files: string[],
+  inputDir: string,
+  outputDir: string,
+  outExt: string,
+): void {
+  const caseInsensitive = process.platform === "win32" || process.platform === "darwin";
+  const byOutput = new Map<string, { outPath: string; inputs: string[] }>();
+  for (const filePath of files) {
+    const outPath = batchOutputPath(filePath, inputDir, outputDir, outExt);
+    const key = caseInsensitive ? outPath.toLowerCase() : outPath;
+    const entry = byOutput.get(key);
+    if (entry) entry.inputs.push(filePath);
+    else byOutput.set(key, { outPath, inputs: [filePath] });
+  }
+
+  const collisions = [...byOutput.values()].filter((entry) => entry.inputs.length > 1);
+  if (collisions.length === 0) return;
+
+  const shown = collisions
+    .slice(0, 10)
+    .map(({ outPath, inputs }) => `  ${outPath} <- ${inputs.join(", ")}`);
+  if (collisions.length > shown.length) {
+    shown.push(`  ... and ${collisions.length - shown.length} more`);
+  }
+  throw new Error(
+    `output path collision: multiple input files would be written to the same output file:\n` +
+      `${shown.join("\n")}\n` +
+      `Rename the inputs, or process one file type at a time with --extension (e.g. --extension pdf).`,
+  );
+}
+
+function collectFiles(
+  dir: string,
+  recursive: boolean,
+  extFilter?: string,
+): string[] {
+  const files: string[] = [];
+  collectFilesInner(dir, recursive, extFilter, files);
+  files.sort();
+  return files;
+}
+
+function collectFilesInner(
+  dir: string,
+  recursive: boolean,
+  extFilter: string | undefined,
+  files: string[],
+): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (recursive) collectFilesInner(fullPath, recursive, extFilter, files);
+      continue;
+    }
+    const lower = entry.name.toLowerCase();
+    if (extFilter) {
+      if (!lower.endsWith(extFilter)) continue;
+    } else {
+      const ext = lower.lastIndexOf(".") >= 0 ? lower.slice(lower.lastIndexOf(".")) : "";
+      if (!SUPPORTED_EXTENSIONS.has(ext)) continue;
+    }
+    files.push(fullPath);
+  }
+}
+
+const modelsCmd = program
+  .command("models")
+  .description("Download, list or remove optional model packages (ocria-nano)");
+
+modelsCmd
+  .command("pull")
+  .description("Download a model package, e.g. `lit models pull ocria-nano@latest`")
+  .argument("<spec>", "Package name, optionally @version")
+  .option("--from <dir>", "Install from a local directory holding the package files")
+  .option("-q, --quiet", "Suppress progress output")
+  .action(async (spec: string, opts: Record<string, unknown>) => {
+    try {
+      await models.pull(spec, { fromDir: opts.from as string | undefined, quiet: !!opts.quiet });
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+modelsCmd
+  .command("list")
+  .description("Show installed model packages")
+  .action(() => {
+    const installed = models.list();
+    if (installed.length === 0) {
+      console.log("No model packages installed (try `lit models pull ocria-nano`).");
+    }
+    for (const m of installed) {
+      const size = (m.sizeBytes / 1e6).toFixed(1);
+      const note = m.complete ? "" : "  (incomplete: pull again)";
+      console.log(`${m.name}@${m.version ?? "?"}  ${size} MB  ${m.path}${note}`);
+    }
+  });
+
+modelsCmd
+  .command("rm")
+  .description("Remove an installed model package")
+  .argument("<name>", "Package name")
+  .action((name: string) => {
+    const dir = models.rm(name);
+    console.log(dir ? `Removed ${dir}` : `${name} is not installed.`);
+  });
+
+program.parse(process.argv);

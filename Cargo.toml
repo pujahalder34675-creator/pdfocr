@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pdfium-sys",
+    "crates/pdfium",
+    "crates/liteparse",
+    "crates/liteparse-napi",
+    "crates/liteparse-python",
+    "crates/liteparse-wasm",
+]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+# Repository metadata updated for the pdfocr standalone snapshot.
+repository = "https://github.com/pujahalder34675-creator/pdfocr"
+
+# The WASM build's ocria-nano runs on tract: its ONNX import and op-registration crates are
+# size-optimized (they run once, at model load); the compute crates (tract-core, tract-linalg)
+# stay at full speed. tract is only built for wasm32 and the `ocria-tract` test feature.
+[profile.release.package.tract-onnx]
+opt-level = "s"
+[profile.release.package.tract-hir]
+opt-level = "s"
+[profile.release.package.tract-onnx-opl]
+opt-level = "s"
+[profile.release.package.tract-nnef]
+opt-level = "s"
