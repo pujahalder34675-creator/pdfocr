@@ -1,9 +1,11 @@
 ---
 title: Agent Skill
-description: Add LiteParse as a skill for coding agents like Claude Code, Cursor, and others.
+description: Add Docvanta as a skill for coding agents like Claude Code, Cursor, and others.
 sidebar:
   order: 11
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 LiteParse ships as a **coding agent skill** — a self-contained capability that Claude Code, Cursor,
 Codex, and other compatible agents load on demand. Installing it gives your agent the ability to

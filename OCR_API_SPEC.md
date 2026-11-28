@@ -1,4 +1,6 @@
-# LiteParse OCR API Specification
+# Docvanta OCR API Specification
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 This document defines the standard HTTP API that OCR servers must implement to work with LiteParse.
 

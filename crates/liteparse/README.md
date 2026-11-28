@@ -1,4 +1,6 @@
-# LiteParse
+# Docvanta
+
+Docvanta is the standalone project based on [LiteParse by LlamaIndex](https://github.com/run-llama/liteparse). Existing `liteparse` / `lit` package, import, CLI, and model identifiers are intentionally retained for compatibility. Registry installation commands refer to upstream published packages; build this repository from source for Docvanta-specific changes.
 
 [![Crates.io version](https://img.shields.io/crates/v/liteparse.svg)](https://crates.io/crates/liteparse)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -81,7 +83,7 @@ annotations. Disabled pages use `None`; enabled untagged pages have no roots.
 
 ## Markdown Output
 
-LiteParse can render documents directly to Markdown, including headings, tables, lists,
+Docvanta can render documents directly to Markdown, including headings, tables, lists,
 images, and links reconstructed from the spatial layout. Set
 `output_format: OutputFormat::Markdown`; the rendered Markdown is returned on
 `result.text`. Two related knobs control Markdown rendering:

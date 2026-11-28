@@ -9,7 +9,7 @@ use liteparse::types::PdfInput;
 #[command(
     name = "lit",
     version,
-    about = "OSS document parsing tool (supports PDF, DOCX, XLSX, images, and more)"
+    about = "Docvanta — OSS document parsing tool (supports PDF, DOCX, XLSX, images, and more)"
 )]
 struct Cli {
     #[command(subcommand)]

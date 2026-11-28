@@ -1,17 +1,19 @@
 ---
-title: What is LiteParse?
+title: What is Docvanta?
 description: Fast, local PDF parsing with spatial text parsing, OCR, and bounding boxes.
 sidebar:
   order: 0
 ---
 
-LiteParse is an open-source document parsing library that parses text with spatial layout information and bounding boxes. Written in Rust for speed and reliability, it runs entirely on your machine with no cloud dependencies, no LLMs, and no API keys.
+Docvanta is the standalone project based on [LiteParse by LlamaIndex](https://github.com/run-llama/liteparse). Existing `liteparse` / `lit` package, import, CLI, and model identifiers are intentionally retained for compatibility. Registry installation commands refer to upstream published packages; build this repository from source for Docvanta-specific changes.
 
-LiteParse is designed specifically for use cases that require fast, accurate text parsing: real-time applications, coding agents, and local workflows. It provides a simple CLI and library API for parsing PDFs, Office documents, and images, with built-in OCR support.
+Docvanta is an open-source document parsing library that parses text with spatial layout information and bounding boxes. Written in Rust for speed and reliability, it runs entirely on your machine with no cloud dependencies, no LLMs, and no API keys.
+
+Docvanta is designed specifically for use cases that require fast, accurate text parsing: real-time applications, coding agents, and local workflows. It provides a simple CLI and library API for parsing PDFs, Office documents, and images, with built-in OCR support.
 
 <img src="https://github.com/user-attachments/assets/67830896-4705-4051-9bdd-aa2d88fbb63f" alt="out">
 
-## What can LiteParse do?
+## What can Docvanta do?
 
 - **Parse PDFs** with precise spatial layout. Text comes back positioned where it appears on the page
 - **Render to Markdown** with headings, tables, lists, images, and links — clean structured output for LLMs and RAG pipelines
@@ -23,9 +25,9 @@ LiteParse is designed specifically for use cases that require fast, accurate tex
 - **Score document complexity** before you parse, so you can route scanned or multi-column documents to the right pipeline
 - **Use from Node.js/TypeScript, Python, Rust, or the browser (WASM)** — whatever fits your stack
 
-## Using OCRia-nano with LiteParse
+## Using OCRia-nano with Docvanta
 
-OCRia-nano is our 8.1M parameter model pipeline for better parsing with LiteParse, built to be the fastest and most accurate 
+OCRia-nano is the upstream LiteParse 8.1M parameter model pipeline for better parsing with LiteParse, built to be the fastest and most accurate 
 parser that runs locally on your CPU. It's open-weights are on HuggingFace and is provied under a modifed OpenRAIL license. 
 
 - [Learn how to use it](/liteparse/guides/ocr/)

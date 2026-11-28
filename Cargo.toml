@@ -12,8 +12,8 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "Apache-2.0"
-# Repository metadata updated for the pdfocr standalone snapshot.
-repository = "https://github.com/pujahalder34675-creator/pdfocr"
+# Repository metadata updated for the Docvanta standalone snapshot.
+repository = "https://github.com/pujahalder34675-creator/Docvanta"
 
 # The WASM build's ocria-nano runs on tract: its ONNX import and op-registration crates are
 # size-optimized (they run once, at model load); the compute crates (tract-core, tract-linalg)

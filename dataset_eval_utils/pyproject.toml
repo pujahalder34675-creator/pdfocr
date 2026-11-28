@@ -1,7 +1,7 @@
 [project]
 name = "liteparse-eval"
 version = "0.1.0"
-description = "Utilities for generating and evaluating datasets for PDF parsing performance."
+description = "Docvanta — Utilities for generating and evaluating datasets for PDF parsing performance."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

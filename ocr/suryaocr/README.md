@@ -1,4 +1,4 @@
-# Surya OCR Service
+# Surya OCR Service — Docvanta
 
 A FastAPI server wrapping [Surya OCR 2](https://github.com/datalab-to/surya) to
 conform to the LiteParse OCR API specification (see `../../OCR_API_SPEC.md`).
@@ -145,7 +145,7 @@ There are two device knobs, for two different parts of the pipeline:
 
 For a turnkey GPU deployment, prefer the Docker image above — it wires both up.
 
-## Use with LiteParse
+## Use with Docvanta
 
 ```bash
 lit parse document.pdf --ocr-server-url http://localhost:8830/ocr

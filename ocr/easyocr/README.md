@@ -1,4 +1,4 @@
-# EasyOCR Service
+# EasyOCR Service — Docvanta
 
 This is a simple Flask server that wraps EasyOCR to conform to the LiteParse OCR API specification (see `../../OCR_API_SPEC.md`).
 
@@ -57,9 +57,9 @@ EasyOCR supports 80+ languages. Common language codes:
 
 Full list: https://www.jaided.ai/easyocr/
 
-## Use with LiteParse
+## Use with Docvanta
 
-Once the server is running, use it with LiteParse OSS:
+Once the server is running, use it with Docvanta's compatible CLI:
 
 ```bash
 # Parse with EasyOCR

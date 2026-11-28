@@ -1,14 +1,14 @@
-# Contributing to LiteParse
+# Contributing to Docvanta
 
-Thank you for your interest in contributing to LiteParse! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Docvanta! This document provides guidelines and information for contributors.
 
 ## Getting Started
 
 1. Fork the repository
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/liteparse.git
-   cd liteparse
+   git clone https://github.com/YOUR_USERNAME/Docvanta.git
+   cd Docvanta
    ```
 3. Install prerequisites (see [Development Prerequisites](#development-prerequisites))
 
@@ -28,7 +28,7 @@ We are less interested in:
 
 ## Architecture Overview
 
-LiteParse is written in Rust with bindings for multiple platforms:
+Docvanta is written in Rust with bindings for multiple platforms:
 
 ```
 crates/

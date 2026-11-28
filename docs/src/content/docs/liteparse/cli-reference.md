@@ -1,9 +1,11 @@
 ---
 title: CLI Reference
-description: Complete reference for all LiteParse CLI commands and options.
+description: Complete reference for all Docvanta CLI commands and options.
 sidebar:
   order: 5
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 LiteParse provides the `lit` CLI with four commands: `parse`, `batch-parse`, `screenshot`, and `is-complex`. The CLI is the same whether installed via `npm`, `pip`, or built from Rust source.
 

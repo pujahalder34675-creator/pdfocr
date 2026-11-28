@@ -33,7 +33,7 @@ function readPackageVersion(): string {
 
 program
   .name("liteparse")
-  .description("Fast, lightweight PDF and document parsing")
+  .description("Docvanta — fast, lightweight PDF and document parsing")
   .version(readPackageVersion());
 
 /**

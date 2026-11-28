@@ -1,4 +1,4 @@
-# Modified for pujahalder34675-creator/pdfocr standalone CI.
+# Modified for pujahalder34675-creator/Docvanta standalone CI.
 name: CI - Python Bindings
 
 on:

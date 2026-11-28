@@ -1,9 +1,11 @@
 ---
 title: OCR Configuration
-description: Configure OCR in LiteParse — built-in Tesseract, LiteParse's own ocria-nano models, or bring your own via HTTP servers.
+description: Configure OCR in Docvanta — built-in Tesseract, upstream LiteParse ocria-nano models, or bring your own via HTTP servers.
 sidebar:
   order: 5
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 LiteParse uses OCR selectively — only on embedded images or pages where native text extraction didn't find text. This keeps parsing fast while still capturing text from scanned pages and embedded images.
 
@@ -70,9 +72,9 @@ If you don't need OCR (pure native-text PDFs, or you don't care about images), d
 lit parse document.pdf --no-ocr
 ```
 
-## ocria-nano (LiteParse's own models)
+## ocria-nano (upstream LiteParse models)
 
-ocria-nano is LiteParse's own OCR and table model package, built to run fast on CPU. It consists of a text-line detector, a script
+ocria-nano is the upstream LiteParse OCR and table model package, built to run fast on CPU. It consists of a text-line detector, a script
 router, four recognizers (Latin, CJK, right-to-left, and a world-script model) and LayoutNet, a learned table and
 layout model, 8.1M parameters in total. It runs in-process through ONNX Runtime, which is downloaded with the models.
 On ParseBench-2 it raises LiteParse from 48.7 (Tesseract) to 59.2, while parsing over twice as many pages per second.

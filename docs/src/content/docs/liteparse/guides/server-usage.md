@@ -1,9 +1,11 @@
 ---
 title: Server Usage
-description: Run LiteParse as an HTTP service with liteparse-server.
+description: Run Docvanta as an HTTP service with liteparse-server.
 sidebar:
   order: 10
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 [`liteparse-server`](https://github.com/run-llama/liteparse-server) is an Express server that exposes [`@llamaindex/liteparse`](https://www.npmjs.com/package/@llamaindex/liteparse) as an HTTP parsing backend. It lets you run LiteParse as a standalone service, which is useful when your application isn't Node.js, when you want to share one parsing instance across multiple clients, or when you need a parsing endpoint behind your own infrastructure.
 

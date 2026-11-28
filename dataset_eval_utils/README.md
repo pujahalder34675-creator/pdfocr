@@ -1,4 +1,6 @@
-# LiteParse Eval Utils
+# Docvanta Evaluation Utilities
+
+The existing `liteparse_eval` import and benchmark provider identifiers remain compatible with upstream LiteParse.
 
 Utilities for generating and evaluating datasets for PDF parsing performance. Compares text extraction quality across multiple PDF parsers using LLM-based QA evaluation.
 

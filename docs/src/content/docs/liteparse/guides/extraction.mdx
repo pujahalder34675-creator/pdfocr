@@ -1,9 +1,11 @@
 ---
 title: Extraction Options
-description: Opt-in flags that add images, vector graphics, annotations, form fields, structure trees, layout blocks, and typography metadata to LiteParse output.
+description: Opt-in flags that add images, vector graphics, annotations, form fields, structure trees, layout blocks, and typography metadata to Docvanta output.
 sidebar:
   order: 3
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 By default, LiteParse returns text, geometry, and page metadata. Everything a PDF *can* carry beyond that (embedded images, vector art, annotations, form fields, tagged-structure trees, per-glyph typography) is **opt-in**, behind its own flag.
 

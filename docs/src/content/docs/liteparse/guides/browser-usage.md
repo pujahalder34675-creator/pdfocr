@@ -1,9 +1,11 @@
 ---
 title: Browser Usage (WASM)
-description: Run LiteParse entirely in the browser with the WASM package.
+description: Run Docvanta entirely in the browser with the WASM package.
 sidebar:
   order: 9
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 LiteParse ships a WebAssembly package that runs entirely in the browser. It supports PDF parsing, LiteParse's own OCR models (ocria-nano), and custom OCR engines implemented in JavaScript.
 
@@ -37,7 +39,7 @@ console.log(result.pages[0]);
 ## What works in the browser
 
 - **PDF parsing** from `Uint8Array` input (use `file.arrayBuffer()` to get bytes from a file picker for example)
-- **Built-in OCR with ocria-nano**: LiteParse's own models, including LayoutNet for tables and layout (see below)
+- **Built-in OCR with ocria-nano**: upstream LiteParse models, including LayoutNet for tables and layout (see below)
 - **Custom OCR** via the `ocrEngine` callback interface (see below)
 - **Text, JSON, and markdown output formats**
 - **Document complexity** via `parser.isComplex(bytes)` — see the [complexity guide](/liteparse/guides/complexity/)

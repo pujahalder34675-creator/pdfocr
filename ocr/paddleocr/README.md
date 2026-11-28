@@ -1,4 +1,4 @@
-# PaddleOCR Service
+# PaddleOCR Service — Docvanta
 
 This is a simple Flask server that wraps PaddleOCR to conform to the LiteParse OCR API specification (see `../../OCR_API_SPEC.md`).
 
@@ -71,9 +71,9 @@ PaddleOCR is optimized for speed and accuracy:
 - **Accurate**: Especially for Asian languages (Chinese, Japanese, Korean)
 - **Lightweight**: Smaller model sizes
 
-## Use with LiteParse
+## Use with Docvanta
 
-Once the server is running, use it with LiteParse:
+Once the server is running, use it with Docvanta:
 
 ```bash
 # Parse with PaddleOCR

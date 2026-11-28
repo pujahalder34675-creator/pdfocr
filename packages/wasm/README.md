@@ -1,4 +1,6 @@
-# @llamaindex/liteparse-wasm
+# Docvanta WASM
+
+Docvanta is the standalone project based on [LiteParse by LlamaIndex](https://github.com/run-llama/liteparse). Existing `liteparse` / `lit` package, import, CLI, and model identifiers are intentionally retained for compatibility. Registry installation commands refer to upstream published packages; build this repository from source for Docvanta-specific changes.
 
 Browser/WebAssembly build of [LiteParse](https://github.com/run-llama/liteparse) — a fast, lightweight PDF parser with spatial text extraction.
 
@@ -138,10 +140,10 @@ already started can continue.
 
 ### Built-in OCR: ocria-nano
 
-ocria-nano, LiteParse's own OCR models, also runs inside the WASM build: the
+ocria-nano, upstream LiteParse OCR models, also runs inside the WASM build: the
 same detector, script router and recognizers as the native CLI, executed in
 WebAssembly (no server, no ONNX Runtime). Optionally it also runs LayoutNet,
-LiteParse's learned table and layout model. The models are downloaded on first
+upstream LiteParse learned table and layout model. The models are downloaded on first
 use; load them once and share the handle.
 
 ```ts

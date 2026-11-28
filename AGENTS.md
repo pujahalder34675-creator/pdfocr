@@ -1,10 +1,12 @@
-# LiteParse - Agent Documentation
+# Docvanta - Agent Documentation
+
+Docvanta is the standalone project based on [LiteParse by LlamaIndex](https://github.com/run-llama/liteparse). Existing `liteparse` / `lit` package, import, CLI, and model identifiers are intentionally retained for compatibility. Registry installation commands refer to upstream published packages; build this repository from source for Docvanta-specific changes.
 
 > This file provides comprehensive context for AI coding agents working on this codebase.
 
 ## Project Overview
 
-**LiteParse** is an open-source PDF parsing library written in **Rust**, focused on fast, lightweight document processing with spatial text extraction. It runs entirely locally with zero cloud dependencies by default.
+**Docvanta** is an open-source PDF parsing library written in **Rust**, focused on fast, lightweight document processing with spatial text extraction. It runs entirely locally with zero cloud dependencies by default.
 
 Language bindings are provided for **Node.js/TypeScript** (via napi-rs), **Python** (via PyO3), and **WebAssembly** (via wasm-bindgen).
 
@@ -18,7 +20,7 @@ Language bindings are provided for **Node.js/TypeScript** (via napi-rs), **Pytho
 ## Directory Structure
 
 ```
-liteparse/
+Docvanta/
 ├── crates/
 │   ├── liteparse/          # Core Rust library + CLI binary
 │   │   └── src/
