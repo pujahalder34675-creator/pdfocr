@@ -1,4 +1,6 @@
-# LiteParse Python
+# Docvanta Python
+
+Docvanta is the standalone project based on [LiteParse by LlamaIndex](https://github.com/run-llama/liteparse). Existing `liteparse` / `lit` package, import, CLI, and model identifiers are intentionally retained for compatibility. Registry installation commands refer to upstream published packages; build this repository from source for Docvanta-specific changes.
 
 Python bindings for [LiteParse](https://github.com/run-llama/liteparse) — fast, lightweight PDF and document parsing with spatial text extraction.
 
@@ -27,7 +29,7 @@ for page in result.pages:
 
 ## Markdown Output
 
-LiteParse can render documents directly to Markdown including headings, tables, lists,
+Docvanta can render documents directly to Markdown including headings, tables, lists,
 images, and links reconstructed from the spatial layout. Great for feeding LLMs
 and RAG pipelines. The rendered Markdown is returned on `result.text`:
 
@@ -108,7 +110,7 @@ fields are API-only and do not alter default CLI JSON.
 
 ## OCR with ocria-nano
 
-ocria-nano is LiteParse's own OCR and table model package (8.1M parameters, CPU only): a line detector, a script
+ocria-nano is upstream LiteParse OCR and table model package (8.1M parameters, CPU only): a line detector, a script
 router, four recognizers and LayoutNet, a learned table and layout model. It is opt-in: pull it once, after which it
 is the default OCR backend.
 

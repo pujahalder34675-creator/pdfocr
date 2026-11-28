@@ -1,6 +1,8 @@
-# LiteParse
+# Docvanta
 
-[![CI](https://github.com/pujahalder34675-creator/pdfocr/actions/workflows/ci.yml/badge.svg)](https://github.com/pujahalder34675-creator/pdfocr/actions/workflows/ci.yml)
+Docvanta is the standalone project based on [LiteParse by LlamaIndex](https://github.com/run-llama/liteparse). Existing `liteparse` / `lit` package, import, CLI, and model identifiers are intentionally retained for compatibility. Registry installation commands refer to upstream published packages; build this repository from source for Docvanta-specific changes.
+
+[![CI](https://github.com/pujahalder34675-creator/Docvanta/actions/workflows/ci.yml/badge.svg)](https://github.com/pujahalder34675-creator/Docvanta/actions/workflows/ci.yml)
 |
 [![Crates.io version](https://img.shields.io/crates/v/liteparse.svg)](https://crates.io/crates/liteparse)
 |
@@ -12,18 +14,18 @@
 |
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 |
-[Docs](https://developers.llamaindex.ai/liteparse/)
+[Upstream docs](https://developers.llamaindex.ai/liteparse/)
 
 English | [简体中文](README.zh-CN.md)
 
-This README was updated for the [pdfocr standalone repository](https://github.com/pujahalder34675-creator/pdfocr),
+This README was updated for the [Docvanta standalone repository](https://github.com/pujahalder34675-creator/Docvanta),
 based on [LiteParse by LlamaIndex](https://github.com/run-llama/liteparse) at
 [commit `79d6449`](https://github.com/run-llama/liteparse/commit/79d644931b58f0ecd199e778dbbc32cb4fc1a5e8).
-Report snapshot-specific bugs in [pdfocr Issues](https://github.com/pujahalder34675-creator/pdfocr/issues).
+Report Docvanta-specific bugs in [Docvanta Issues](https://github.com/pujahalder34675-creator/Docvanta/issues).
 
 <img width="640" height="450" alt="liteparse-demo" src="https://github.com/user-attachments/assets/67830896-4705-4051-9bdd-aa2d88fbb63f" />
 
-LiteParse is a standalone OSS PDF parsing tool focused exclusively on **fast and light** parsing. It provides high-quality spatial text parsing with bounding boxes, without proprietary LLM features or cloud dependencies. Everything runs locally on your machine.
+Docvanta is a standalone OSS PDF parsing tool focused exclusively on **fast and light** parsing. It provides high-quality spatial text parsing with bounding boxes, without proprietary LLM features or cloud dependencies. Everything runs locally on your machine.
 
 **Hitting the limits of local parsing?**
 For complex documents (dense tables, multi-column layouts, charts, handwritten text, or
@@ -38,7 +40,7 @@ hard stuff so your models see clean, structured data and markdown.
 - **Fast Text Parsing**: Spatial text parsing using PDFium, ~2-5ms per page
 - **Flexible OCR System**:
   - **Built-in**: Tesseract (zero setup, bundled with the library)
-  - **ocria-nano (opt-in)**: LiteParse's own CPU models (8.1M parameters): line detector, script router, four recognizers and LayoutNet, a learned table and layout model. `lit models pull ocria-nano` once, then it is the OCR backend ([details](#optional-ocria-nano-liteparses-own-models))
+  - **ocria-nano (opt-in)**: upstream LiteParse CPU models (8.1M parameters): line detector, script router, four recognizers and LayoutNet, a learned table and layout model. `lit models pull ocria-nano` once, then it is the OCR backend ([details](#optional-ocria-nano-upstream-liteparse-models))
   - **HTTP Servers**: Plug in any OCR server (EasyOCR, PaddleOCR, custom)
   - **Standard API**: Simple, well-defined OCR API specification
 - **Complexity Detection**: Cheaply check whether a document needs OCR or heavier parsing — route, reject, or estimate cost before a full parse
@@ -122,6 +124,8 @@ flowchart LR
 ```
 
 ## Benchmarks
+
+The results below are historical upstream LiteParse benchmarks, not independently measured Docvanta results.
 
 ### With ocria-nano
 
@@ -564,7 +568,7 @@ lit models list                                         Show installed model pac
 lit models rm <name>                                    Remove an installed model package
 ```
 
-The one package is `ocria-nano` (see [ocria-nano](#optional-ocria-nano-liteparses-own-models)).
+The one package is `ocria-nano` (see [ocria-nano](#optional-ocria-nano-upstream-liteparse-models)).
 
 #### Batch Parse Command
 
@@ -643,9 +647,9 @@ Or pass the path directly:
 lit parse document.pdf --tessdata-path /path/to/tessdata
 ```
 
-### Optional: ocria-nano (LiteParse's own models)
+### Optional: ocria-nano (upstream LiteParse models)
 
-ocria-nano is LiteParse's own model package: a text-line detector, a script router, four
+ocria-nano is the upstream LiteParse model package: a text-line detector, a script router, four
 recognizers (Latin, CJK, right-to-left, and a world-script model covering about 17 more scripts) and
 LayoutNet, a learned table and layout model. Everything runs in-process on CPU through ONNX Runtime,
 which is downloaded with the models. It is opt-in, the models are not bundled and are licensed
