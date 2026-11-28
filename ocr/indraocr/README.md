@@ -1,4 +1,4 @@
-# Indra OCR Service
+# Indra OCR Service — Docvanta
 
 A FastAPI server wrapping [Indra OCR](https://huggingface.co/datalab-to/indra-ocr)
 to conform to the LiteParse OCR API specification (see `../../OCR_API_SPEC.md`).
@@ -100,7 +100,7 @@ single-threaded recognizers keeps every page busy without oversubscribing the CP
 INDRA_WORKERS=8 INDRA_THREADS=1 uv run server.py
 ```
 
-## Use with LiteParse
+## Use with Docvanta
 
 ```bash
 lit parse document.pdf --ocr-server-url http://localhost:8831/ocr

@@ -1,4 +1,4 @@
-# MiniCPM-OCR Service
+# MiniCPM-OCR Service — Docvanta
 
 A FastAPI server wrapping [MiniCPM-OCR 1.0](https://github.com/OpenBMB/MiniCPM-OCR)
 to conform to the LiteParse OCR API specification (see `../../OCR_API_SPEC.md`).

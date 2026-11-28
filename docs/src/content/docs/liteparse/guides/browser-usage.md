@@ -39,7 +39,7 @@ console.log(result.pages[0]);
 ## What works in the browser
 
 - **PDF parsing** from `Uint8Array` input (use `file.arrayBuffer()` to get bytes from a file picker for example)
-- **Built-in OCR with ocria-nano**: LiteParse's own models, including LayoutNet for tables and layout (see below)
+- **Built-in OCR with ocria-nano**: upstream LiteParse models, including LayoutNet for tables and layout (see below)
 - **Custom OCR** via the `ocrEngine` callback interface (see below)
 - **Text, JSON, and markdown output formats**
 - **Document complexity** via `parser.isComplex(bytes)` — see the [complexity guide](/liteparse/guides/complexity/)
