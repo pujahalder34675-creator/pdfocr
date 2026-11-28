@@ -5,6 +5,8 @@ sidebar:
   order: 8
 ---
 
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
+
 To parse remote files, LiteParse supports both CLI and library usage for reading bytes and streams. The CLI can download them with any tool you like and pipe the bytes to `lit parse` using `-` as the file argument, while the libraries can fetch the bytes directly and pass them to the parser.
 
 ## CLI usage

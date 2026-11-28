@@ -1,9 +1,11 @@
 ---
 title: OCR Configuration
-description: Configure OCR in LiteParse — built-in Tesseract, LiteParse's own ocria-nano models, or bring your own via HTTP servers.
+description: Configure OCR in Docvanta — built-in Tesseract, Docvanta's own ocria-nano models, or bring your own via HTTP servers.
 sidebar:
   order: 5
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 LiteParse uses OCR selectively — only on embedded images or pages where native text extraction didn't find text. This keeps parsing fast while still capturing text from scanned pages and embedded images.
 

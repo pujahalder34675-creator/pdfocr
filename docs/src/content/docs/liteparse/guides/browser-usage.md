@@ -1,9 +1,11 @@
 ---
 title: Browser Usage (WASM)
-description: Run LiteParse entirely in the browser with the WASM package.
+description: Run Docvanta entirely in the browser with the WASM package.
 sidebar:
   order: 9
 ---
+
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
 
 LiteParse ships a WebAssembly package that runs entirely in the browser. It supports PDF parsing, LiteParse's own OCR models (ocria-nano), and custom OCR engines implemented in JavaScript.
 

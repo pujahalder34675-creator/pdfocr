@@ -1,5 +1,7 @@
 # ocr/
 
+Docvanta uses the existing LiteParse-compatible APIs and command names. Code examples intentionally retain upstream identifiers; upstream packages, OCR providers and model weights remain separately identified.
+
 Example OCR server implementations that conform to the LiteParse OCR API specification.
 
 These servers allow you to use alternative OCR engines instead of the built-in Tesseract.js.
