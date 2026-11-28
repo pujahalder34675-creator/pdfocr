@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "liteparse"
 version = "2.21.3"
-description = "Python bindings for LiteParse - fast, lightweight PDF and document parsing"
+description = "Python bindings for Docvanta - fast, lightweight PDF and document parsing"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
@@ -30,9 +30,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/run-llama/liteparse"
-Documentation = "https://github.com/run-llama/liteparse#readme"
-Repository = "https://github.com/run-llama/liteparse"
+Homepage = "https://github.com/pujahalder34675-creator/Docvanta"
+Documentation = "https://github.com/pujahalder34675-creator/Docvanta#readme"
+Repository = "https://github.com/pujahalder34675-creator/Docvanta"
 
 [project.scripts]
 lit = "liteparse.cli:main"

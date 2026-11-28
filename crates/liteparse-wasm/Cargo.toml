@@ -4,7 +4,7 @@ version = "2.21.3"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "LiteParse PDF parser — WebAssembly bindings for the browser"
+description = "Docvanta PDF parser — WebAssembly bindings for the browser"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
